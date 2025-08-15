@@ -126,7 +126,12 @@ wget "$DCV_DOWNLOAD_URL"
 # Extract packages
 log "Extracting DCV packages..."
 tar -xzf "$DCV_PACKAGE_NAME"
-cd "nice-dcv-"*
+DCV_DIR=$(find . -maxdepth 1 -name "nice-dcv-*" -type d | head -1)
+if [[ -z "$DCV_DIR" ]]; then
+    log "ERROR: Could not find extracted DCV directory"
+    exit 1
+fi
+cd "$DCV_DIR"
 
 # Install core DCV server
 log "Installing Amazon DCV Server..."
