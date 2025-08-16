@@ -90,6 +90,7 @@ INSTALL_EXTERNAL_AUTH=${INSTALL_EXTERNAL_AUTH:-false}
 INSTALL_USB_REMOTIZATION=${INSTALL_USB_REMOTIZATION:-false}
 INSTALL_PULSEAUDIO=${INSTALL_PULSEAUDIO:-true}
 AUTO_START_SERVICE=${AUTO_START_SERVICE:-true}
+AUTO_CREATE_SESSION=${AUTO_CREATE_SESSION:-true}
 DISABLE_SCREENSAVER=${DISABLE_SCREENSAVER:-true}
 DISABLE_LOCK_SCREEN=${DISABLE_LOCK_SCREEN:-true}
 
@@ -112,6 +113,33 @@ sudo apt update
 # Install required dependencies
 log "Installing required dependencies..."
 sudo apt install -y wget gpg tar
+
+# Install desktop environment if requested
+if [[ "$INSTALL_DESKTOP" == "true" ]]; then
+    log "Installing desktop environment: $DESKTOP_ENVIRONMENT"
+    sudo apt install -y "$DESKTOP_ENVIRONMENT"
+    
+    # Fix systemd-networkd-wait-online service timeout issue on EC2
+    log "Fixing systemd-networkd-wait-online service for EC2 instances..."
+    sudo systemctl disable systemd-networkd-wait-online.service || warn "Could not disable systemd-networkd-wait-online.service"
+    sudo systemctl mask systemd-networkd-wait-online.service || warn "Could not mask systemd-networkd-wait-online.service"
+    log "Network service timeout issue fixed"
+    
+    # Disable Wayland for DCV compatibility
+    log "Disabling Wayland for DCV compatibility..."
+    if [ -f /etc/gdm3/custom.conf ]; then
+        sudo cp /etc/gdm3/custom.conf /etc/gdm3/custom.conf.backup
+        if grep -q "WaylandEnable" /etc/gdm3/custom.conf; then
+            sudo sed -i 's/#WaylandEnable=false/WaylandEnable=false/' /etc/gdm3/custom.conf
+            sudo sed -i 's/WaylandEnable=true/WaylandEnable=false/' /etc/gdm3/custom.conf
+        else
+            sudo sed -i '/\[daemon\]/a WaylandEnable=false' /etc/gdm3/custom.conf
+        fi
+        log "Wayland disabled - system will use X11 for DCV compatibility"
+    else
+        warn "GDM3 configuration file not found - Wayland may still be enabled"
+    fi
+fi
 
 # Download and import GPG key
 log "Downloading and importing Amazon DCV GPG key..."
@@ -208,9 +236,126 @@ else
     error "Failed to start Amazon DCV Server. Check logs with: sudo journalctl -u dcvserver"
 fi
 
-# Create a simple session for the current user
-log "Creating a console session for user: $USER"
-sudo dcv create-session --type=console --owner="$USER" "$USER-session" || warn "Failed to create console session. You may need to create it manually."
+# Configure desktop environment settings
+if [[ "$INSTALL_DESKTOP" == "true" ]]; then
+    log "Configuring desktop environment settings..."
+    
+    # Disable screensaver and lock screen if requested
+    if [[ "$DISABLE_SCREENSAVER" == "true" || "$DISABLE_LOCK_SCREEN" == "true" ]]; then
+        log "Configuring screensaver and lock screen settings for user: $USER"
+        
+        # Create user directories if they don't exist
+        mkdir -p "/home/$USER/.config/dconf"
+        
+        # Configure GNOME settings to disable screensaver and lock screen
+        if [[ "$DISABLE_SCREENSAVER" == "true" ]]; then
+            log "Disabling screensaver..."
+            sudo -u "$USER" dbus-launch gsettings set org.gnome.desktop.screensaver idle-activation-enabled false 2>/dev/null || warn "Could not disable screensaver via gsettings"
+            sudo -u "$USER" dbus-launch gsettings set org.gnome.desktop.session idle-delay 0 2>/dev/null || warn "Could not set idle delay via gsettings"
+        fi
+        
+        if [[ "$DISABLE_LOCK_SCREEN" == "true" ]]; then
+            log "Disabling lock screen..."
+            sudo -u "$USER" dbus-launch gsettings set org.gnome.desktop.screensaver lock-enabled false 2>/dev/null || warn "Could not disable lock screen via gsettings"
+            sudo -u "$USER" dbus-launch gsettings set org.gnome.desktop.lockdown disable-lock-screen true 2>/dev/null || warn "Could not disable lock screen lockdown via gsettings"
+        fi
+    fi
+    
+    log "Desktop environment configuration completed"
+fi
+
+# Configure automatic session creation and startup
+if [[ "$AUTO_CREATE_SESSION" == "true" ]]; then
+    log "Configuring automatic DCV session startup..."
+
+    # Create DCV configuration directory if it doesn't exist
+    sudo mkdir -p /etc/dcv
+
+    # Configure DCV server for automatic session creation
+    log "Configuring DCV server settings..."
+    sudo tee /etc/dcv/dcv.conf > /dev/null << EOF
+[license]
+[log]
+[session-management]
+virtual-session-xdcv-args="-ac -nolisten tcp -extension GLX"
+create-session = true
+[session-management/defaults]
+[session-management/automatic-console-session]
+storage-root="/home"
+[display]
+target-fps=25
+enable-qu-resize=true
+max-head-resolution=(1920, 1080)
+console-session-default-resolution=(1920, 1080)
+[connectivity]
+web-url-path="/dcv"
+[security]
+authentication="system"
+EOF
+
+    # Set proper permissions for DCV configuration
+    sudo chown root:root /etc/dcv/dcv.conf
+    sudo chmod 644 /etc/dcv/dcv.conf
+
+    # Add current user to dcv group for session management
+    log "Adding user $USER to dcv group..."
+    sudo usermod -aG dcv "$USER"
+
+    # Create a systemd service for automatic session creation
+    log "Creating automatic session startup service..."
+    sudo tee /etc/systemd/system/dcv-create-session.service > /dev/null << EOF
+[Unit]
+Description=Create DCV Session for $USER
+After=dcvserver.service
+Requires=dcvserver.service
+Wants=graphical-session.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=root
+ExecStartPre=/bin/sleep 10
+ExecStart=/usr/bin/dcv create-session --type=console --owner=$USER $USER-session
+ExecStop=/usr/bin/dcv close-session $USER-session
+TimeoutStartSec=60
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Enable and start the session creation service
+    sudo systemctl daemon-reload
+    sudo systemctl enable dcv-create-session.service
+
+    # Wait a moment for DCV server to be fully ready
+    log "Waiting for DCV server to be ready..."
+    sleep 5
+
+    # Create initial session
+    log "Creating initial console session for user: $USER"
+    if sudo dcv create-session --type=console --owner="$USER" "$USER-session" 2>/dev/null; then
+        log "Console session created successfully"
+        SESSION_CREATED=true
+    else
+        warn "Failed to create initial console session. The automatic service will retry on next boot."
+        SESSION_CREATED=false
+    fi
+
+    # Verify session creation
+    log "Verifying DCV session status..."
+    if dcv list-sessions | grep -q "$USER-session"; then
+        log "DCV session is active and ready for connections"
+        SESSION_STATUS="Active"
+    else
+        warn "DCV session may not be active. Check logs: sudo journalctl -u dcv-create-session.service"
+        SESSION_STATUS="Not Active"
+    fi
+else
+    log "Automatic session creation disabled"
+    SESSION_STATUS="Disabled"
+fi
 
 # Display connection information
 log "Installation completed successfully!"
@@ -219,10 +364,15 @@ echo -e "${BLUE}=== Amazon DCV Server Installation Summary ===${NC}"
 echo -e "Ubuntu Version: $UBUNTU_VERSION"
 echo -e "Architecture: $ARCH"
 echo -e "DCV Server: ${GREEN}Installed and Running${NC}"
+echo -e "Desktop Environment: $([ "$INSTALL_DESKTOP" == "true" ] && echo -e "${GREEN}$DESKTOP_ENVIRONMENT Installed${NC}" || echo -e "${YELLOW}Not Installed${NC}")"
 echo -e "Web Viewer: $([ "$INSTALL_WEB_VIEWER" == "true" ] && echo -e "${GREEN}Installed${NC}" || echo -e "${YELLOW}Not Installed${NC}")"
 echo -e "Virtual Sessions: $([ "$INSTALL_VIRTUAL_SESSIONS" == "true" ] && echo -e "${GREEN}Installed${NC}" || echo -e "${YELLOW}Not Installed${NC}")"
 echo -e "GPU Support: $([ "$INSTALL_GPU_SUPPORT" == "true" ] && echo -e "${GREEN}Installed${NC}" || echo -e "${YELLOW}Not Installed${NC}")"
 echo -e "Auto-start: $([ "$AUTO_START_SERVICE" == "true" ] && echo -e "${GREEN}Enabled${NC}" || echo -e "${YELLOW}Disabled${NC}")"
+echo -e "Network Service Fix: $([ "$INSTALL_DESKTOP" == "true" ] && echo -e "${GREEN}Applied${NC}" || echo -e "${YELLOW}Not Applied${NC}")"
+echo -e "Wayland Disabled: $([ "$INSTALL_DESKTOP" == "true" ] && echo -e "${GREEN}Yes (X11 Enabled)${NC}" || echo -e "${YELLOW}Not Applied${NC}")"
+echo -e "DCV Session: $([ "$SESSION_STATUS" == "Active" ] && echo -e "${GREEN}$SESSION_STATUS${NC}" || echo -e "${YELLOW}$SESSION_STATUS${NC}")"
+echo -e "Auto Session Service: ${GREEN}Enabled${NC}"
 echo
 echo -e "${BLUE}=== Connection Information ===${NC}"
 echo -e "DCV Server URL: ${GREEN}https://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || hostname -I | awk '{print $1}'):8443${NC}"
@@ -234,6 +384,11 @@ echo -e "View service logs: ${GREEN}sudo journalctl -u dcvserver -f${NC}"
 echo -e "List sessions: ${GREEN}dcv list-sessions${NC}"
 echo -e "Create new session: ${GREEN}dcv create-session --type=console --owner=\$USER my-session${NC}"
 echo -e "Delete session: ${GREEN}dcv close-session session-name${NC}"
+echo -e "Check failed services: ${GREEN}sudo systemctl --failed${NC}"
+echo -e "Check DCV session logs: ${GREEN}sudo tail -f /var/log/dcv/sessionlauncher.log${NC}"
+echo -e "Check session service: ${GREEN}sudo systemctl status dcv-create-session.service${NC}"
+echo -e "Restart session service: ${GREEN}sudo systemctl restart dcv-create-session.service${NC}"
+echo -e "Manual session creation: ${GREEN}sudo dcv create-session --type=console --owner=\$USER \$USER-session${NC}"
 echo
 echo -e "${YELLOW}Note: Make sure port 8443 is open in your security group for HTTPS access.${NC}"
 echo -e "${YELLOW}For QUIC protocol support, also open UDP port 8443.${NC}"

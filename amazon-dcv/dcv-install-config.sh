@@ -48,6 +48,10 @@ export INSTALL_PULSEAUDIO=true
 # Recommended: true
 export AUTO_START_SERVICE=true
 
+# Auto-create DCV session for current user
+# Recommended: true (creates session automatically on boot)
+export AUTO_CREATE_SESSION=true
+
 # Disable screensaver
 # Recommended: true (prevents session interruption)
 export DISABLE_SCREENSAVER=true
@@ -65,6 +69,7 @@ echo "  External Auth: $INSTALL_EXTERNAL_AUTH"
 echo "  USB Remotization: $INSTALL_USB_REMOTIZATION"
 echo "  PulseAudio: $INSTALL_PULSEAUDIO"
 echo "  Auto-start: $AUTO_START_SERVICE"
+echo "  Auto-create Session: $AUTO_CREATE_SESSION"
 echo "  Disable Screensaver: $DISABLE_SCREENSAVER"
 echo "  Disable Lock Screen: $DISABLE_LOCK_SCREEN"
 echo

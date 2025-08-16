@@ -14,6 +14,9 @@ Amazon DCV (Desktop Cloud Visualization) is a high-performance remote display pr
 - **Session Types**: Supports both console and virtual sessions
 - **GPU Support**: Hardware acceleration for graphics workloads
 - **AWS Optimized**: Configured for EC2 instances with proper security groups
+- **Network Service Fix**: Automatically resolves systemd-networkd-wait-online timeout issues on EC2
+- **X11 Compatibility**: Automatically disables Wayland for DCV compatibility
+- **Auto Session Creation**: Automatically creates and starts DCV sessions on boot
 - **Hibernation Compatible**: Works with EC2 Spot Instance hibernation workflows
 
 ## Quick Start
