@@ -26,6 +26,28 @@ cd amazon-dcv
 
 See [amazon-dcv/README.md](amazon-dcv/README.md) for detailed information.
 
+### Kubernetes Development Tools
+
+Comprehensive setup for Kubernetes operator development using Kubebuilder and Operator SDK.
+
+**Location**: [`kubernetes_development/`](kubernetes_development/)
+
+**Features**:
+- Automated installation of Kubebuilder and Operator SDK (latest versions)
+- Complete Go development environment setup
+- Docker and Kubernetes toolchain (kubectl, kind, helm, kustomize)
+- Ready-to-use workspace with documentation and examples
+- Ubuntu 18.04+ compatibility with version detection
+- Comprehensive verification and troubleshooting guides
+
+**Quick Start**:
+```bash
+cd kubernetes_development
+./install-k8s-operator-tools.sh
+```
+
+See [kubernetes_development/README.md](kubernetes_development/README.md) for detailed information.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
