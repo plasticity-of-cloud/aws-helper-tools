@@ -29,6 +29,11 @@ export INSTALL_VIRTUAL_SESSIONS=true
 # Set to true if you have GPU instances (G4, G5, P3, P4, etc.)
 export INSTALL_GPU_SUPPORT=false
 
+# Install XDummy driver for non-GPU instances
+# Enables flexible display resolution control for virtual sessions
+# Recommended: true (unless using GPU instances)
+export INSTALL_XDUMMY_DRIVER=true
+
 # Install External Authenticator
 # Required for integration with Amazon DCV EnginFrame
 # Most users don't need this
@@ -52,6 +57,10 @@ export AUTO_START_SERVICE=true
 # Recommended: true (creates session automatically on boot)
 export AUTO_CREATE_SESSION=true
 
+# Use virtual sessions instead of console sessions
+# Recommended: true (provides better resolution control with XDummy driver)
+export USE_VIRTUAL_SESSIONS=true
+
 # Disable screensaver
 # Recommended: true (prevents session interruption)
 export DISABLE_SCREENSAVER=true
@@ -64,12 +73,14 @@ echo "DCV installation configuration loaded:"
 echo "  Desktop Environment: $INSTALL_DESKTOP ($DESKTOP_ENVIRONMENT)"
 echo "  Web Viewer: $INSTALL_WEB_VIEWER"
 echo "  Virtual Sessions: $INSTALL_VIRTUAL_SESSIONS"
+echo "  XDummy Driver: $INSTALL_XDUMMY_DRIVER"
 echo "  GPU Support: $INSTALL_GPU_SUPPORT"
 echo "  External Auth: $INSTALL_EXTERNAL_AUTH"
 echo "  USB Remotization: $INSTALL_USB_REMOTIZATION"
 echo "  PulseAudio: $INSTALL_PULSEAUDIO"
 echo "  Auto-start: $AUTO_START_SERVICE"
 echo "  Auto-create Session: $AUTO_CREATE_SESSION"
+echo "  Use Virtual Sessions: $USE_VIRTUAL_SESSIONS"
 echo "  Disable Screensaver: $DISABLE_SCREENSAVER"
 echo "  Disable Lock Screen: $DISABLE_LOCK_SCREEN"
 echo

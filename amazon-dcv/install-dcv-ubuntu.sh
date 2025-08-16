@@ -86,11 +86,13 @@ DESKTOP_ENVIRONMENT=${DESKTOP_ENVIRONMENT:-"ubuntu-desktop-minimal"}
 INSTALL_WEB_VIEWER=${INSTALL_WEB_VIEWER:-true}
 INSTALL_VIRTUAL_SESSIONS=${INSTALL_VIRTUAL_SESSIONS:-true}
 INSTALL_GPU_SUPPORT=${INSTALL_GPU_SUPPORT:-false}
+INSTALL_XDUMMY_DRIVER=${INSTALL_XDUMMY_DRIVER:-true}
 INSTALL_EXTERNAL_AUTH=${INSTALL_EXTERNAL_AUTH:-false}
 INSTALL_USB_REMOTIZATION=${INSTALL_USB_REMOTIZATION:-false}
 INSTALL_PULSEAUDIO=${INSTALL_PULSEAUDIO:-true}
 AUTO_START_SERVICE=${AUTO_START_SERVICE:-true}
 AUTO_CREATE_SESSION=${AUTO_CREATE_SESSION:-true}
+USE_VIRTUAL_SESSIONS=${USE_VIRTUAL_SESSIONS:-true}
 DISABLE_SCREENSAVER=${DISABLE_SCREENSAVER:-true}
 DISABLE_LOCK_SCREEN=${DISABLE_LOCK_SCREEN:-true}
 
@@ -264,6 +266,45 @@ if [[ "$INSTALL_DESKTOP" == "true" ]]; then
     log "Desktop environment configuration completed"
 fi
 
+# Install XDummy driver for non-GPU instances (enables flexible resolution control)
+if [[ "$INSTALL_XDUMMY_DRIVER" == "true" && "$INSTALL_GPU_SUPPORT" != "true" ]]; then
+    log "Installing XDummy driver for flexible display resolution control..."
+    sudo apt install -y xserver-xorg-video-dummy
+    
+    # Configure XDummy in xorg.conf
+    log "Configuring XDummy driver..."
+    sudo mkdir -p /etc/X11
+    sudo tee /etc/X11/xorg.conf > /dev/null << 'EOF'
+Section "Device"
+    Identifier "DummyDevice"
+    Driver "dummy"
+    Option "UseEDID" "false"
+    VideoRam 512000
+EndSection
+
+Section "Monitor"
+    Identifier "DummyMonitor"
+    HorizSync   5.0 - 1000.0
+    VertRefresh 5.0 - 200.0
+    Option "ReducedBlanking"
+EndSection
+
+Section "Screen"
+    Identifier "DummyScreen"
+    Device "DummyDevice"
+    Monitor "DummyMonitor"
+    DefaultDepth 24
+    SubSection "Display"
+        Viewport 0 0
+        Depth 24
+        Virtual 4096 2160
+    EndSubSection
+EndSection
+EOF
+    
+    log "XDummy driver installed and configured for flexible resolution control"
+fi
+
 # Configure automatic session creation and startup
 if [[ "$AUTO_CREATE_SESSION" == "true" ]]; then
     log "Configuring automatic DCV session startup..."
@@ -284,9 +325,11 @@ create-session = true
 storage-root="/home"
 [display]
 target-fps=25
-enable-qu-resize=true
-max-head-resolution=(1920, 1080)
-console-session-default-resolution=(1920, 1080)
+enable-client-resize=true
+max-head-resolution=(4096, 2160)
+web-client-max-head-resolution=(2560, 1440)
+min-head-resolution=(800, 600)
+max-num-heads=2
 [connectivity]
 web-url-path="/dcv"
 [security]
@@ -300,6 +343,17 @@ EOF
     # Add current user to dcv group for session management
     log "Adding user $USER to dcv group..."
     sudo usermod -aG dcv "$USER"
+
+    # Determine session type based on configuration
+    if [[ "$USE_VIRTUAL_SESSIONS" == "true" && "$INSTALL_VIRTUAL_SESSIONS" == "true" ]]; then
+        SESSION_TYPE="virtual"
+        SESSION_NAME="$USER-virtual-session"
+        log "Using virtual sessions for better resolution control"
+    else
+        SESSION_TYPE="console"
+        SESSION_NAME="$USER-session"
+        log "Using console sessions"
+    fi
 
     # Create a systemd service for automatic session creation
     log "Creating automatic session startup service..."
@@ -315,8 +369,8 @@ Type=oneshot
 RemainAfterExit=yes
 User=root
 ExecStartPre=/bin/sleep 10
-ExecStart=/usr/bin/dcv create-session --type=console --owner=$USER $USER-session
-ExecStop=/usr/bin/dcv close-session $USER-session
+ExecStart=/usr/bin/dcv create-session --type=$SESSION_TYPE --owner=$USER $SESSION_NAME
+ExecStop=/usr/bin/dcv close-session $SESSION_NAME
 TimeoutStartSec=60
 Restart=on-failure
 RestartSec=10
@@ -334,20 +388,20 @@ EOF
     sleep 5
 
     # Create initial session
-    log "Creating initial console session for user: $USER"
-    if sudo dcv create-session --type=console --owner="$USER" "$USER-session" 2>/dev/null; then
-        log "Console session created successfully"
+    log "Creating initial $SESSION_TYPE session for user: $USER"
+    if sudo dcv create-session --type="$SESSION_TYPE" --owner="$USER" "$SESSION_NAME" 2>/dev/null; then
+        log "$SESSION_TYPE session created successfully"
         SESSION_CREATED=true
     else
-        warn "Failed to create initial console session. The automatic service will retry on next boot."
+        warn "Failed to create initial $SESSION_TYPE session. The automatic service will retry on next boot."
         SESSION_CREATED=false
     fi
 
     # Verify session creation
     log "Verifying DCV session status..."
-    if dcv list-sessions | grep -q "$USER-session"; then
-        log "DCV session is active and ready for connections"
-        SESSION_STATUS="Active"
+    if dcv list-sessions | grep -q "$SESSION_NAME"; then
+        log "DCV $SESSION_TYPE session is active and ready for connections"
+        SESSION_STATUS="Active ($SESSION_TYPE)"
     else
         warn "DCV session may not be active. Check logs: sudo journalctl -u dcv-create-session.service"
         SESSION_STATUS="Not Active"
@@ -367,6 +421,7 @@ echo -e "DCV Server: ${GREEN}Installed and Running${NC}"
 echo -e "Desktop Environment: $([ "$INSTALL_DESKTOP" == "true" ] && echo -e "${GREEN}$DESKTOP_ENVIRONMENT Installed${NC}" || echo -e "${YELLOW}Not Installed${NC}")"
 echo -e "Web Viewer: $([ "$INSTALL_WEB_VIEWER" == "true" ] && echo -e "${GREEN}Installed${NC}" || echo -e "${YELLOW}Not Installed${NC}")"
 echo -e "Virtual Sessions: $([ "$INSTALL_VIRTUAL_SESSIONS" == "true" ] && echo -e "${GREEN}Installed${NC}" || echo -e "${YELLOW}Not Installed${NC}")"
+echo -e "XDummy Driver: $([ "$INSTALL_XDUMMY_DRIVER" == "true" ] && [ "$INSTALL_GPU_SUPPORT" != "true" ] && echo -e "${GREEN}Installed${NC}" || echo -e "${YELLOW}Not Installed${NC}")"
 echo -e "GPU Support: $([ "$INSTALL_GPU_SUPPORT" == "true" ] && echo -e "${GREEN}Installed${NC}" || echo -e "${YELLOW}Not Installed${NC}")"
 echo -e "Auto-start: $([ "$AUTO_START_SERVICE" == "true" ] && echo -e "${GREEN}Enabled${NC}" || echo -e "${YELLOW}Disabled${NC}")"
 echo -e "Network Service Fix: $([ "$INSTALL_DESKTOP" == "true" ] && echo -e "${GREEN}Applied${NC}" || echo -e "${YELLOW}Not Applied${NC}")"
@@ -376,7 +431,7 @@ echo -e "Auto Session Service: ${GREEN}Enabled${NC}"
 echo
 echo -e "${BLUE}=== Connection Information ===${NC}"
 echo -e "DCV Server URL: ${GREEN}https://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || hostname -I | awk '{print $1}'):8443${NC}"
-echo -e "Session Name: ${GREEN}$USER-session${NC}"
+echo -e "Session Name: ${GREEN}$SESSION_NAME${NC}"
 echo
 echo -e "${BLUE}=== Useful Commands ===${NC}"
 echo -e "Check service status: ${GREEN}sudo systemctl status dcvserver${NC}"

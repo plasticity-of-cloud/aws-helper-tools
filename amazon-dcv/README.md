@@ -10,8 +10,9 @@ Amazon DCV (Desktop Cloud Visualization) is a high-performance remote display pr
 
 - **Complete Desktop Environment**: Installs Ubuntu desktop with full graphical interface
 - **Multiple Desktop Options**: Choose from GNOME, XFCE4, KDE, or minimal installations
+- **Flexible Resolution Control**: XDummy driver installation for full resolution control in browser
+- **Virtual Sessions**: Supports both console and virtual sessions with automatic session creation
 - **Screensaver Management**: Automatically disables screensaver and lock screen for uninterrupted sessions
-- **Session Types**: Supports both console and virtual sessions
 - **GPU Support**: Hardware acceleration for graphics workloads
 - **AWS Optimized**: Configured for EC2 instances with proper security groups
 - **Network Service Fix**: Automatically resolves systemd-networkd-wait-online timeout issues on EC2
