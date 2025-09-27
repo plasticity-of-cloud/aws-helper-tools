@@ -4,6 +4,8 @@
 # Source this file before running install-dcv-ubuntu.sh to customize the installation
 # Usage: source dcv-install-config.sh && ./install-dcv-ubuntu.sh
 
+# Note: DCV 2024.0 supports Ubuntu 24.04 packages (hibernation support may vary)
+
 # Core DCV Server is always installed
 
 # Install Desktop Environment
@@ -47,7 +49,7 @@ export INSTALL_USB_REMOTIZATION=false
 # Install PulseAudio utilities
 # Required for microphone redirection
 # Recommended: true
-export INSTALL_PULSEAUDIO=true
+export INSTALL_PULSEAUDIO=false
 
 # Auto-start DCV service on boot
 # Recommended: true

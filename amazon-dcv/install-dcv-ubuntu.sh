@@ -96,10 +96,19 @@ USE_VIRTUAL_SESSIONS=${USE_VIRTUAL_SESSIONS:-true}
 DISABLE_SCREENSAVER=${DISABLE_SCREENSAVER:-true}
 DISABLE_LOCK_SCREEN=${DISABLE_LOCK_SCREEN:-true}
 
-# DCV version (using latest links)
+# DCV version 2024.0 (latest as of documentation review)
+DCV_VERSION="2024.0"
+DCV_BUILD="19030"
 DCV_BASE_URL="https://d1uj6qtbmh3dt5.cloudfront.net"
-DCV_PACKAGE_NAME="nice-dcv-${PACKAGE_VERSION}-${DCV_ARCH}.tgz"
-DCV_DOWNLOAD_URL="${DCV_BASE_URL}/${DCV_PACKAGE_NAME}"
+
+# Use Ubuntu 22.04 packages for Ubuntu 24.04 compatibility (closest supported version)
+if [[ "$UBUNTU_VERSION" == "24.04" ]]; then
+    PACKAGE_VERSION="ubuntu2204"
+    warn "Using Ubuntu 22.04 packages for Ubuntu 24.04 (closest supported version)"
+fi
+
+DCV_PACKAGE_NAME="nice-dcv-${DCV_VERSION}-${DCV_BUILD}-${PACKAGE_VERSION}-${DCV_ARCH}.tgz"
+DCV_DOWNLOAD_URL="${DCV_BASE_URL}/${DCV_VERSION}/Servers/${DCV_PACKAGE_NAME}"
 
 # Temporary directory for downloads
 TEMP_DIR=$(mktemp -d)
@@ -165,7 +174,12 @@ cd "$DCV_DIR"
 
 # Install core DCV server
 log "Installing Amazon DCV Server..."
-sudo apt install -y "./nice-dcv-server_"*"_${DEB_ARCH}.${PACKAGE_VERSION}.deb"
+DCV_SERVER_DEB=$(find . -name "nice-dcv-server_*_${DEB_ARCH}.deb" | head -1)
+if [[ -n "$DCV_SERVER_DEB" ]]; then
+    sudo apt install -y "$DCV_SERVER_DEB"
+else
+    error "DCV Server package not found"
+fi
 
 # Add dcv user to video group
 log "Adding dcv user to video group..."
@@ -174,21 +188,33 @@ sudo usermod -aG video dcv
 # Install optional components
 if [[ "$INSTALL_WEB_VIEWER" == "true" ]]; then
     log "Installing DCV Web Viewer..."
-    sudo apt install -y "./nice-dcv-web-viewer_"*"_${DEB_ARCH}.${PACKAGE_VERSION}.deb"
+    DCV_WEB_DEB=$(find . -name "nice-dcv-web-viewer_*_${DEB_ARCH}.deb" | head -1)
+    if [[ -n "$DCV_WEB_DEB" ]]; then
+        sudo apt install -y "$DCV_WEB_DEB"
+    else
+        warn "DCV Web Viewer package not found"
+    fi
 fi
 
 if [[ "$INSTALL_VIRTUAL_SESSIONS" == "true" ]]; then
     log "Installing DCV Virtual Sessions (nice-xdcv)..."
-    sudo apt install -y "./nice-xdcv_"*"_${DEB_ARCH}.${PACKAGE_VERSION}.deb"
+    DCV_XDCV_DEB=$(find . -name "nice-xdcv_*_${DEB_ARCH}.deb" | head -1)
+    if [[ -n "$DCV_XDCV_DEB" ]]; then
+        sudo apt install -y "$DCV_XDCV_DEB"
+    else
+        warn "DCV Virtual Sessions package not found"
+    fi
 fi
 
 if [[ "$INSTALL_GPU_SUPPORT" == "true" && "$DCV_ARCH" == "x86_64" ]]; then
     log "Installing DCV GPU support..."
-    if ls ./nice-dcv-gl_* 1> /dev/null 2>&1; then
-        sudo apt install -y "./nice-dcv-gl_"*"_${DEB_ARCH}.${PACKAGE_VERSION}.deb"
+    DCV_GL_DEB=$(find . -name "nice-dcv-gl_*_${DEB_ARCH}.deb" | head -1)
+    if [[ -n "$DCV_GL_DEB" ]]; then
+        sudo apt install -y "$DCV_GL_DEB"
         
         # Install GL test package if available
-        if ls ./nice-dcv-gltest_* 1> /dev/null 2>&1; then
+        DCV_GLTEST_DEB=$(find . -name "nice-dcv-gltest_*_${DEB_ARCH}.deb" | head -1)
+        if [[ -n "$DCV_GLTEST_DEB" ]]; then
             log "Installing DCV GL test package..."
             sudo apt install -y "./nice-dcv-gltest_"*"_${DEB_ARCH}.${PACKAGE_VERSION}.deb"
         fi
