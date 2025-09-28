@@ -192,8 +192,11 @@ EOF
         },
         {
             "Effect": "Allow",
-            "Action": "s3:GetObject",
-            "Resource": "arn:aws:s3:::$BUCKET_NAME/*"
+            "Action": ["s3:GetObject", "s3:ListBucket"],
+            "Resource": [
+                "arn:aws:s3:::$BUCKET_NAME",
+                "arn:aws:s3:::$BUCKET_NAME/*"
+            ]
         }
     ]
 }
