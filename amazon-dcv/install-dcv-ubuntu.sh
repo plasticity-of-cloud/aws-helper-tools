@@ -34,8 +34,8 @@ tar xf dcv-server.tgz
 
 # Find and install all .deb packages
 echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] Installing Amazon DCV Server..."
-if [ -d nice-dcv-*/ubuntu2204 ]; then
-    cd nice-dcv-*/ubuntu2204
+if [ -d nice-dcv-* ]; then
+    cd nice-dcv-*
     # Install dependencies first
     sudo apt-get update
     sudo apt-get install -y \
