@@ -189,6 +189,11 @@ EOF
             "Effect": "Allow",
             "Action": "s3:GetObject",
             "Resource": "arn:aws:s3:::dcv-license.$REGION/*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::$BUCKET_NAME/*"
         }
     ]
 }
@@ -215,59 +220,42 @@ else
     echo -e "${GREEN}IAM role exists: $ROLE_NAME${NC}"
 fi
 
-# Upload DCV installation scripts to SSM Parameter Store
-echo -e "${YELLOW}Uploading DCV installation scripts to SSM...${NC}"
+# Create S3 bucket for scripts
+BUCKET_NAME="dcv-workstation-scripts-$(date +%s)-$(openssl rand -hex 4)"
+echo -e "${YELLOW}Creating S3 bucket for scripts...${NC}"
 
-INSTALL_SCRIPT=$(cat "$(dirname "$0")/install-dcv-ubuntu.sh" | base64 -w 0)
-CONFIG_SCRIPT=$(cat "$(dirname "$0")/dcv-install-config.sh" | base64 -w 0)
+aws s3 mb s3://$BUCKET_NAME --region $REGION
 
-aws ssm put-parameter \
-    --region $REGION \
-    --name "/dcv-workstation/install-script" \
-    --value "$INSTALL_SCRIPT" \
-    --type "String" \
-    --tier "Advanced" \
-    --overwrite
+# Upload scripts to S3
+aws s3 cp "$(dirname "$0")/install-dcv-ubuntu.sh" s3://$BUCKET_NAME/install-dcv-ubuntu.sh
+aws s3 cp "$(dirname "$0")/dcv-install-config.sh" s3://$BUCKET_NAME/dcv-install-config.sh
 
-aws ssm put-parameter \
-    --region $REGION \
-    --name "/dcv-workstation/config-script" \
-    --value "$CONFIG_SCRIPT" \
-    --type "String" \
-    --tier "Advanced" \
-    --overwrite
+echo -e "${GREEN}Scripts uploaded to S3 bucket: $BUCKET_NAME${NC}"
 
-echo -e "${GREEN}Scripts uploaded to SSM Parameter Store${NC}"
-
-# Create user data script that uses SSM to download and execute DCV scripts
-USER_DATA=$(cat << 'EOF'
+# Create user data script that downloads and executes DCV scripts from S3
+USER_DATA=$(cat << EOF
 #!/bin/bash
 apt-get update
-apt-get install -y awscli amazon-ssm-agent
+apt-get install -y snapd
+
+# Install AWS CLI and SSM agent via snap
+snap install aws-cli --classic
+snap install amazon-ssm-agent --classic
+
+systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
+systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
 
 # Disable KASLR for Ubuntu hibernation (AWS recommendation)
 echo "Disabling KASLR for hibernation compatibility..."
 sed -i 's/GRUB_CMDLINE_LINUX_DEFAULT="[^"]*/& nokaslr/' /etc/default/grub
 update-grub
 
-systemctl enable amazon-ssm-agent
-systemctl start amazon-ssm-agent
-
 sleep 30
 
-REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+REGION=\$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
 
-aws ssm get-parameter \
-    --region $REGION \
-    --name "/dcv-workstation/config-script" \
-    --query 'Parameter.Value' \
-    --output text | base64 -d > /tmp/dcv-install-config.sh
-
-aws ssm get-parameter \
-    --region $REGION \
-    --name "/dcv-workstation/install-script" \
-    --query 'Parameter.Value' \
-    --output text | base64 -d > /tmp/install-dcv-ubuntu.sh
+aws s3 cp s3://$BUCKET_NAME/dcv-install-config.sh /tmp/dcv-install-config.sh
+aws s3 cp s3://$BUCKET_NAME/install-dcv-ubuntu.sh /tmp/install-dcv-ubuntu.sh
 
 chmod +x /tmp/dcv-install-config.sh /tmp/install-dcv-ubuntu.sh
 
@@ -367,8 +355,8 @@ aws ec2 terminate-instances --region $REGION --instance-ids $INSTANCE_ID
 aws ec2 release-address --region $REGION --allocation-id $EIP_ALLOC
 aws ec2 delete-launch-template --region $REGION --launch-template-name $TEMPLATE_NAME
 aws ec2 delete-security-group --region $REGION --group-id $SG_ID
-aws ssm delete-parameter --region $REGION --name "/dcv-workstation/install-script" || true
-aws ssm delete-parameter --region $REGION --name "/dcv-workstation/config-script" || true
+aws s3 rm s3://$BUCKET_NAME --recursive
+aws s3 rb s3://$BUCKET_NAME
 echo "Cleanup complete"
 EOL
 
