@@ -363,6 +363,8 @@ cat > $HOME/spot-workstations/cleanup-$INSTANCE_ID.sh << EOL
 #!/bin/bash
 echo "Cleaning up resources..."
 aws ec2 terminate-instances --region $REGION --instance-ids $INSTANCE_ID
+echo "Waiting for instance to terminate..."
+aws ec2 wait instance-terminated --region $REGION --instance-ids $INSTANCE_ID
 aws ec2 release-address --region $REGION --allocation-id $EIP_ALLOC
 aws ec2 delete-launch-template --region $REGION --launch-template-name $TEMPLATE_NAME
 aws ec2 delete-security-group --region $REGION --group-id $SG_ID
