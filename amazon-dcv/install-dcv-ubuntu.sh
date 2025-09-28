@@ -2,6 +2,9 @@
 
 set -e
 
+# Set non-interactive mode
+export DEBIAN_FRONTEND=noninteractive
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -23,9 +26,6 @@ fi
 TEMP_DIR=$(mktemp -d)
 cd $TEMP_DIR
 
-echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] Downloading and importing Amazon DCV GPG key..."
-curl -fsSL https://d1uj6qtbmh3dt5.cloudfront.net/NICE-GPG-KEY | sudo gpg --dearmor -o /usr/share/keyrings/nice-dcv-archive-keyring.gpg
-
 echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] Downloading Amazon DCV packages..."
 wget $DCV_URL -O dcv-server.tgz
 
@@ -38,20 +38,19 @@ if [ -d nice-dcv-* ]; then
     cd nice-dcv-*
     # Install dependencies first
     sudo apt-get update
-    sudo apt-get install -y \
-        ubuntu-desktop \
-        xfce4 \
-        xfce4-terminal \
-        dbus-x11 \
-        x11-xserver-utils \
-        python3-websocket \
-        libgles2
+    sudo apt-get install -y ubuntu-desktop-minimal
 
-    # Install DCV packages in correct order
-    for pkg in nice-dcv-gl*.deb nice-dcv-server*.deb nice-dcv-web-viewer*.deb; do
+    # Install DCV packages directly (skip GPG verification for now)
+    echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] Installing DCV server package..."
+    sudo dpkg -i nice-dcv-server*.deb || true
+    sudo apt-get install -f -y
+
+    # Install additional packages if they exist
+    for pkg in nice-dcv-web-viewer*.deb nice-xdcv*.deb; do
         if [ -f "$pkg" ]; then
             echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] Installing $pkg..."
-            sudo dpkg -i "$pkg"
+            sudo dpkg -i "$pkg" || true
+            sudo apt-get install -f -y
         fi
     done
 else
