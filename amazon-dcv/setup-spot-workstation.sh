@@ -202,13 +202,22 @@ EOF
 }
 EOF
 
-    aws iam create-policy \
-        --policy-name DCV-License-S3-Access \
-        --policy-document file:///tmp/dcv-license-policy.json
+    # Check if policy exists and get its ARN
+    POLICY_ARN=$(aws iam list-policies --query "Policies[?PolicyName=='DCV-License-S3-Access'].Arn" --output text)
+    
+    if [ -z "$POLICY_ARN" ]; then
+        echo -e "${YELLOW}Creating new IAM policy DCV-License-S3-Access...${NC}"
+        POLICY_ARN=$(aws iam create-policy \
+            --policy-name DCV-License-S3-Access \
+            --policy-document file:///tmp/dcv-license-policy.json \
+            --query 'Policy.Arn' --output text)
+    else
+        echo -e "${YELLOW}Using existing IAM policy DCV-License-S3-Access...${NC}"
+    fi
 
     aws iam attach-role-policy \
         --role-name $ROLE_NAME \
-        --policy-arn arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):policy/DCV-License-S3-Access
+        --policy-arn $POLICY_ARN
 
     aws iam create-instance-profile \
         --instance-profile-name $ROLE_NAME
