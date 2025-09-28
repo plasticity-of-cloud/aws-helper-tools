@@ -2,6 +2,9 @@
 
 set -e
 
+# Disable AWS CLI pager to prevent interactive prompts
+export AWS_PAGER=""
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -186,11 +189,13 @@ EOF
 
     aws iam create-role \
         --role-name $ROLE_NAME \
-        --assume-role-policy-document file:///tmp/trust-policy.json
+        --assume-role-policy-document file:///tmp/trust-policy.json \
+        --no-cli-pager
 
     aws iam attach-role-policy \
         --role-name $ROLE_NAME \
-        --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore \
+        --no-cli-pager
 
     # Create and attach DCV license S3 access policy
     cat > /tmp/dcv-license-policy.json << EOF
@@ -215,28 +220,32 @@ EOF
 EOF
 
     # Check if policy exists and get its ARN
-    POLICY_ARN=$(aws iam list-policies --query "Policies[?PolicyName=='DCV-License-S3-Access'].Arn" --output text)
+    POLICY_ARN=$(aws iam list-policies --query "Policies[?PolicyName=='DCV-License-S3-Access'].Arn" --output text --no-cli-pager)
     
     if [ -z "$POLICY_ARN" ]; then
         echo -e "${YELLOW}Creating new IAM policy DCV-License-S3-Access...${NC}"
         POLICY_ARN=$(aws iam create-policy \
             --policy-name DCV-License-S3-Access \
             --policy-document file:///tmp/dcv-license-policy.json \
-            --query 'Policy.Arn' --output text)
+            --query 'Policy.Arn' --output text \
+            --no-cli-pager)
     else
         echo -e "${YELLOW}Using existing IAM policy DCV-License-S3-Access...${NC}"
     fi
 
     aws iam attach-role-policy \
         --role-name $ROLE_NAME \
-        --policy-arn $POLICY_ARN
+        --policy-arn $POLICY_ARN \
+        --no-cli-pager
 
     aws iam create-instance-profile \
-        --instance-profile-name $ROLE_NAME
+        --instance-profile-name $ROLE_NAME \
+        --no-cli-pager
 
     aws iam add-role-to-instance-profile \
         --instance-profile-name $ROLE_NAME \
-        --role-name $ROLE_NAME
+        --role-name $ROLE_NAME \
+        --no-cli-pager
 
     echo -e "${GREEN}IAM role created: $ROLE_NAME${NC}"
     sleep 30
