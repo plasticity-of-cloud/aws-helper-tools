@@ -33,7 +33,7 @@ export INSTALL_GPU_SUPPORT=false
 
 # Install XDummy driver for non-GPU instances
 # Enables flexible display resolution control for virtual sessions
-# Recommended: true (unless using GPU instances)
+# Mandatory: true (required for proper resolution support)
 export INSTALL_XDUMMY_DRIVER=true
 
 # Install External Authenticator

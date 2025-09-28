@@ -38,7 +38,7 @@ if [ -d nice-dcv-* ]; then
     cd nice-dcv-*
     # Install dependencies first
     sudo apt-get update
-    sudo apt-get install -y ubuntu-desktop-minimal
+    sudo apt-get install -y ubuntu-desktop-minimal xserver-xorg-video-dummy
 
     # Install DCV packages directly (skip GPG verification for now)
     echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] Installing DCV server package..."
@@ -60,6 +60,22 @@ fi
 
 # Configure DCV
 echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] Configuring DCV Server..."
+
+# Create DCV configuration for high resolution support
+echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] Creating DCV configuration for high resolution support..."
+sudo tee /etc/dcv/dcv.conf > /dev/null << EOF
+[display]
+max-head-resolution = "3840x2160"
+custom-resolutions = "1600x900,1680x1050,1920x1080,2560x1440,3840x2160"
+
+[session-management/defaults]
+resolution = "1920x1080"
+
+[session-management/automatic-console-session]
+create-session = true
+owner = "ubuntu"
+EOF
+
 sudo systemctl enable dcvserver
 sudo systemctl start dcvserver
 
