@@ -165,14 +165,13 @@ aws s3 cp "$(dirname "$0")/dcv-install-config.sh" s3://$BUCKET_NAME/dcv-install-
 
 echo -e "${GREEN}Scripts uploaded to S3 bucket: $BUCKET_NAME${NC}"
 
-# Create IAM role for SSM if it doesn't exist
-ROLE_NAME="DCV-Workstation-SSM-Role"
-echo -e "${YELLOW}Checking IAM role for SSM...${NC}"
+# Create IAM role for SSM with unique names
+TIMESTAMP=$(date +%s)
+ROLE_NAME="DCV-Workstation-SSM-Role-$TIMESTAMP"
+POLICY_NAME="DCV-License-S3-Access-$TIMESTAMP"
+echo -e "${YELLOW}Creating IAM role: $ROLE_NAME${NC}"
 
-if ! aws iam get-role --role-name $ROLE_NAME &>/dev/null; then
-    echo -e "${YELLOW}Creating IAM role for SSM...${NC}"
-    
-    cat > /tmp/trust-policy.json << EOF
+cat > /tmp/trust-policy.json << EOF
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -187,18 +186,18 @@ if ! aws iam get-role --role-name $ROLE_NAME &>/dev/null; then
 }
 EOF
 
-    aws iam create-role \
-        --role-name $ROLE_NAME \
-        --assume-role-policy-document file:///tmp/trust-policy.json \
-        --no-cli-pager
+aws iam create-role \
+    --role-name $ROLE_NAME \
+    --assume-role-policy-document file:///tmp/trust-policy.json \
+    --no-cli-pager
 
-    aws iam attach-role-policy \
-        --role-name $ROLE_NAME \
-        --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore \
-        --no-cli-pager
+aws iam attach-role-policy \
+    --role-name $ROLE_NAME \
+    --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore \
+    --no-cli-pager
 
-    # Create and attach DCV license S3 access policy
-    cat > /tmp/dcv-license-policy.json << EOF
+# Create and attach DCV license S3 access policy with correct permissions
+cat > /tmp/dcv-license-policy.json << EOF
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -219,39 +218,29 @@ EOF
 }
 EOF
 
-    # Check if policy exists and get its ARN
-    POLICY_ARN=$(aws iam list-policies --query "Policies[?PolicyName=='DCV-License-S3-Access'].Arn" --output text --no-cli-pager)
-    
-    if [ -z "$POLICY_ARN" ]; then
-        echo -e "${YELLOW}Creating new IAM policy DCV-License-S3-Access...${NC}"
-        POLICY_ARN=$(aws iam create-policy \
-            --policy-name DCV-License-S3-Access \
-            --policy-document file:///tmp/dcv-license-policy.json \
-            --query 'Policy.Arn' --output text \
-            --no-cli-pager)
-    else
-        echo -e "${YELLOW}Using existing IAM policy DCV-License-S3-Access...${NC}"
-    fi
+echo -e "${YELLOW}Creating IAM policy: $POLICY_NAME${NC}"
+POLICY_ARN=$(aws iam create-policy \
+    --policy-name $POLICY_NAME \
+    --policy-document file:///tmp/dcv-license-policy.json \
+    --query 'Policy.Arn' --output text \
+    --no-cli-pager)
 
-    aws iam attach-role-policy \
-        --role-name $ROLE_NAME \
-        --policy-arn $POLICY_ARN \
-        --no-cli-pager
+aws iam attach-role-policy \
+    --role-name $ROLE_NAME \
+    --policy-arn $POLICY_ARN \
+    --no-cli-pager
 
-    aws iam create-instance-profile \
-        --instance-profile-name $ROLE_NAME \
-        --no-cli-pager
+aws iam create-instance-profile \
+    --instance-profile-name $ROLE_NAME \
+    --no-cli-pager
 
-    aws iam add-role-to-instance-profile \
-        --instance-profile-name $ROLE_NAME \
-        --role-name $ROLE_NAME \
-        --no-cli-pager
+aws iam add-role-to-instance-profile \
+    --instance-profile-name $ROLE_NAME \
+    --role-name $ROLE_NAME \
+    --no-cli-pager
 
-    echo -e "${GREEN}IAM role created: $ROLE_NAME${NC}"
-    sleep 30
-else
-    echo -e "${GREEN}IAM role exists: $ROLE_NAME${NC}"
-fi
+echo -e "${GREEN}IAM role created: $ROLE_NAME${NC}"
+sleep 30
 
 # Create user data script that downloads and executes DCV scripts from S3
 USER_DATA=$(cat << EOF
@@ -378,6 +367,13 @@ aws ec2 delete-launch-template --region $REGION --launch-template-name $TEMPLATE
 aws ec2 delete-security-group --region $REGION --group-id $SG_ID
 aws s3 rm s3://$BUCKET_NAME --recursive
 aws s3 rb s3://$BUCKET_NAME
+# Clean up IAM resources
+aws iam detach-role-policy --role-name $ROLE_NAME --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+aws iam detach-role-policy --role-name $ROLE_NAME --policy-arn $POLICY_ARN
+aws iam remove-role-from-instance-profile --instance-profile-name $ROLE_NAME --role-name $ROLE_NAME
+aws iam delete-instance-profile --instance-profile-name $ROLE_NAME
+aws iam delete-role --role-name $ROLE_NAME
+aws iam delete-policy --policy-arn $POLICY_ARN
 echo "Cleanup complete"
 EOL
 
