@@ -362,7 +362,7 @@ mkdir -p $HOME/spot-workstations
 cat > $HOME/spot-workstations/cleanup-$INSTANCE_ID.sh << EOL
 #!/bin/bash
 echo "Cleaning up resources..."
-aws ec2 terminate-instances --region $REGION --instance-ids $INSTANCE_ID
+aws ec2 terminate-instances --region $REGION --instance-ids $INSTANCE_ID --force
 echo "Waiting for instance to terminate..."
 aws ec2 wait instance-terminated --region $REGION --instance-ids $INSTANCE_ID
 aws ec2 release-address --region $REGION --allocation-id $EIP_ALLOC
