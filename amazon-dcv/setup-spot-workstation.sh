@@ -297,7 +297,7 @@ aws ec2 create-launch-template \
         \"BlockDeviceMappings\": [{
             \"DeviceName\": \"/dev/sda1\",
             \"Ebs\": {
-                \"VolumeSize\": 50,
+                \"VolumeSize\": 100,
                 \"VolumeType\": \"gp3\",
                 \"Throughput\": 500,
                 \"Encrypted\": true,
