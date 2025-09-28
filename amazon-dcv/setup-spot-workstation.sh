@@ -150,6 +150,18 @@ aws ec2 authorize-security-group-ingress \
 
 echo -e "${GREEN}Security group created: $SG_ID${NC}"
 
+# Create S3 bucket for scripts first (needed for IAM policy)
+BUCKET_NAME="dcv-workstation-scripts-$(date +%s)-$(openssl rand -hex 4)"
+echo -e "${YELLOW}Creating S3 bucket for scripts...${NC}"
+
+aws s3 mb s3://$BUCKET_NAME --region $REGION
+
+# Upload scripts to S3
+aws s3 cp "$(dirname "$0")/install-dcv-ubuntu.sh" s3://$BUCKET_NAME/install-dcv-ubuntu.sh
+aws s3 cp "$(dirname "$0")/dcv-install-config.sh" s3://$BUCKET_NAME/dcv-install-config.sh
+
+echo -e "${GREEN}Scripts uploaded to S3 bucket: $BUCKET_NAME${NC}"
+
 # Create IAM role for SSM if it doesn't exist
 ROLE_NAME="DCV-Workstation-SSM-Role"
 echo -e "${YELLOW}Checking IAM role for SSM...${NC}"
@@ -231,18 +243,6 @@ EOF
 else
     echo -e "${GREEN}IAM role exists: $ROLE_NAME${NC}"
 fi
-
-# Create S3 bucket for scripts
-BUCKET_NAME="dcv-workstation-scripts-$(date +%s)-$(openssl rand -hex 4)"
-echo -e "${YELLOW}Creating S3 bucket for scripts...${NC}"
-
-aws s3 mb s3://$BUCKET_NAME --region $REGION
-
-# Upload scripts to S3
-aws s3 cp "$(dirname "$0")/install-dcv-ubuntu.sh" s3://$BUCKET_NAME/install-dcv-ubuntu.sh
-aws s3 cp "$(dirname "$0")/dcv-install-config.sh" s3://$BUCKET_NAME/dcv-install-config.sh
-
-echo -e "${GREEN}Scripts uploaded to S3 bucket: $BUCKET_NAME${NC}"
 
 # Create user data script that downloads and executes DCV scripts from S3
 USER_DATA=$(cat << EOF
