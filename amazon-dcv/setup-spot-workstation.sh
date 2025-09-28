@@ -357,8 +357,9 @@ echo -e "${GREEN}SSH Access: ssh ubuntu@$EIP_ADDRESS${NC}"
 echo -e "${GREEN}DCV Access: https://$EIP_ADDRESS:8443${NC}"
 echo -e "${YELLOW}Note: Wait ~10 minutes for DCV setup to complete${NC}"
 
-# Create cleanup script
-cat > cleanup-$INSTANCE_ID.sh << EOL
+# Create cleanup script in organized directory
+mkdir -p $HOME/spot-workstations
+cat > $HOME/spot-workstations/cleanup-$INSTANCE_ID.sh << EOL
 #!/bin/bash
 echo "Cleaning up resources..."
 aws ec2 terminate-instances --region $REGION --instance-ids $INSTANCE_ID
@@ -377,5 +378,5 @@ aws iam delete-policy --policy-arn $POLICY_ARN
 echo "Cleanup complete"
 EOL
 
-chmod +x cleanup-$INSTANCE_ID.sh
-echo -e "${YELLOW}Cleanup script created: cleanup-$INSTANCE_ID.sh${NC}"
+chmod +x $HOME/spot-workstations/cleanup-$INSTANCE_ID.sh
+echo -e "${YELLOW}Cleanup script created: $HOME/spot-workstations/cleanup-$INSTANCE_ID.sh${NC}"
