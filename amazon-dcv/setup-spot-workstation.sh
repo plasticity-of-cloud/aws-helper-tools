@@ -11,6 +11,7 @@ NC='\033[0m' # No Color
 # Parse command line arguments
 ACCESS_CIDR="0.0.0.0/0"
 REGION=""
+ARCH=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -22,9 +23,13 @@ while [[ $# -gt 0 ]]; do
             ACCESS_CIDR="$2"
             shift 2
             ;;
+        --arch)
+            ARCH="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option $1"
-            echo "Usage: $0 --region REGION [--access-cidr CIDR]"
+            echo "Usage: $0 --region REGION [--access-cidr CIDR] [--arch x86|arm64]"
             exit 1
             ;;
     esac
@@ -32,7 +37,13 @@ done
 
 if [ -z "$REGION" ]; then
     echo "Error: --region parameter is required"
-    echo "Usage: $0 --region REGION [--access-cidr CIDR]"
+    echo "Usage: $0 --region REGION [--access-cidr CIDR] [--arch x86|arm64]"
+    exit 1
+fi
+
+# Validate architecture parameter
+if [ -n "$ARCH" ] && [ "$ARCH" != "x86" ] && [ "$ARCH" != "arm64" ]; then
+    echo "Error: --arch must be either 'x86' or 'arm64'"
     exit 1
 fi
 
@@ -41,25 +52,37 @@ echo -e "${GREEN}Region: $REGION${NC}"
 
 # Get Ubuntu 22.04 LTS AMI (hibernation supported)
 echo -e "${YELLOW}Finding Ubuntu 22.04 LTS AMI (hibernation compatible)...${NC}"
-if [[ "$INSTANCE_TYPE" == m7g* || "$INSTANCE_TYPE" == c7g* || "$INSTANCE_TYPE" == r7g* ]]; then
-    ARCH="arm64"
-else
-    ARCH="amd64"
+
+# Set architecture - default to x86 if not specified
+if [ -z "$ARCH" ]; then
+    ARCH="x86"
+    echo -e "${YELLOW}No architecture specified, defaulting to x86${NC}"
 fi
+
+# Map architecture to AMI architecture string
+if [ "$ARCH" = "x86" ]; then
+    AMI_ARCH="amd64"
+    DEFAULT_INSTANCE_TYPE="m7i.2xlarge"
+else
+    AMI_ARCH="arm64"
+    DEFAULT_INSTANCE_TYPE="m7g.2xlarge"
+fi
+
+echo -e "${GREEN}Using architecture: $ARCH ($AMI_ARCH)${NC}"
 
 AMI_ID=$(aws ec2 describe-images \
     --region $REGION \
     --owners 099720109477 \
-    --filters "Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-jammy-22.04-${ARCH}-server-*" \
+    --filters "Name=name,Values=ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-${AMI_ARCH}-server-*" \
               "Name=state,Values=available" \
     --query 'Images | sort_by(@, &CreationDate) | [-1].ImageId' \
     --output text)
 
 if [ "$AMI_ID" = "None" ] || [ -z "$AMI_ID" ]; then
-    echo -e "${RED}Ubuntu 22.04 LTS AMI not found for $ARCH architecture${NC}"
+    echo -e "${RED}Ubuntu 22.04 LTS AMI not found for $AMI_ARCH architecture${NC}"
     exit 1
 fi
-echo -e "${GREEN}Found AMI: $AMI_ID ($ARCH)${NC}"
+echo -e "${GREEN}Found AMI: $AMI_ID ($AMI_ARCH)${NC}"
 
 # Get default VPC
 VPC_ID=$(aws ec2 describe-vpcs \
@@ -157,6 +180,28 @@ EOF
         --role-name $ROLE_NAME \
         --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
 
+    # Create and attach DCV license S3 access policy
+    cat > /tmp/dcv-license-policy.json << EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::dcv-license.$REGION/*"
+        }
+    ]
+}
+EOF
+
+    aws iam create-policy \
+        --policy-name DCV-License-S3-Access \
+        --policy-document file:///tmp/dcv-license-policy.json
+
+    aws iam attach-role-policy \
+        --role-name $ROLE_NAME \
+        --policy-arn arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):policy/DCV-License-S3-Access
+
     aws iam create-instance-profile \
         --instance-profile-name $ROLE_NAME
 
@@ -181,6 +226,7 @@ aws ssm put-parameter \
     --name "/dcv-workstation/install-script" \
     --value "$INSTALL_SCRIPT" \
     --type "String" \
+    --tier "Advanced" \
     --overwrite
 
 aws ssm put-parameter \
@@ -188,6 +234,7 @@ aws ssm put-parameter \
     --name "/dcv-workstation/config-script" \
     --value "$CONFIG_SCRIPT" \
     --type "String" \
+    --tier "Advanced" \
     --overwrite
 
 echo -e "${GREEN}Scripts uploaded to SSM Parameter Store${NC}"
@@ -244,7 +291,7 @@ aws ec2 create-launch-template \
     --launch-template-name $TEMPLATE_NAME \
     --launch-template-data "{
         \"ImageId\": \"$AMI_ID\",
-        \"InstanceType\": \"m7g.2xlarge\",
+        \"InstanceType\": \"$DEFAULT_INSTANCE_TYPE\",
         \"SecurityGroupIds\": [\"$SG_ID\"],
         \"IamInstanceProfile\": {
             \"Name\": \"$ROLE_NAME\"
@@ -305,6 +352,7 @@ INSTANCE_IP=$(aws ec2 describe-instances \
 
 echo -e "${GREEN}=== Setup Complete ===${NC}"
 echo -e "${GREEN}Instance ID: $INSTANCE_ID${NC}"
+echo -e "${GREEN}Architecture: $ARCH ($DEFAULT_INSTANCE_TYPE)${NC}"
 echo -e "${GREEN}Public IP (Static): $EIP_ADDRESS${NC}"
 echo -e "${GREEN}Private IP: $INSTANCE_IP${NC}"
 echo -e "${GREEN}SSH Access: ssh ubuntu@$EIP_ADDRESS${NC}"
