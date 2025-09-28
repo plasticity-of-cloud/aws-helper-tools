@@ -24,7 +24,7 @@ TEMP_DIR=$(mktemp -d)
 cd $TEMP_DIR
 
 echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] Downloading and importing Amazon DCV GPG key..."
-curl -fsSL https://www.nice-dcv.com/nice-dcv-server-public-key.gpg | sudo gpg --dearmor -o /usr/share/keyrings/nice-dcv-archive-keyring.gpg
+curl -fsSL https://d1uj6qtbmh3dt5.cloudfront.net/NICE-GPG-KEY | sudo gpg --dearmor -o /usr/share/keyrings/nice-dcv-archive-keyring.gpg
 
 echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] Downloading Amazon DCV packages..."
 wget $DCV_URL -O dcv-server.tgz
