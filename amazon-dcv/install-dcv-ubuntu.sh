@@ -63,10 +63,19 @@ echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] Configuring DCV Server..."
 sudo systemctl enable dcvserver
 sudo systemctl start dcvserver
 
+# Wait for DCV to start
+sleep 5
+
+# Create virtual session for ubuntu user
+echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] Creating DCV virtual session..."
+sudo dcv create-session --type=virtual --owner ubuntu --storage-root /home/ubuntu ubuntu-session || true
+
 # Clean up
 cd
 rm -rf $TEMP_DIR
 
 echo -e "${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] DCV Server installation complete${NC}"
 echo -e "${GREEN}DCV Server status:${NC}"
-sudo systemctl status dcvserver
+sudo systemctl status dcvserver --no-pager
+echo -e "${GREEN}DCV Sessions:${NC}"
+dcv list-sessions
