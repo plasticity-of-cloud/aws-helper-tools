@@ -356,6 +356,15 @@ echo -e "${GREEN}Private IP: $INSTANCE_IP${NC}"
 echo -e "${GREEN}SSH Access: ssh ubuntu@$EIP_ADDRESS${NC}"
 echo -e "${GREEN}DCV Access: https://$EIP_ADDRESS:8443${NC}"
 echo -e "${YELLOW}Note: Wait ~10 minutes for DCV setup to complete${NC}"
+echo -e ""
+echo -e "${YELLOW}📋 Next Steps:${NC}"
+echo -e "${YELLOW}1. Set password for ubuntu user:${NC}"
+echo -e "   aws ssm send-command --region $REGION --instance-ids $INSTANCE_ID --document-name 'AWS-RunShellScript' --parameters 'commands=[\"echo ubuntu:YOUR_PASSWORD | sudo chpasswd\"]'"
+echo -e ""
+echo -e "${YELLOW}2. Access your workstation:${NC}"
+echo -e "   • Open: https://$EIP_ADDRESS:8443"
+echo -e "   • Username: ubuntu"
+echo -e "   • Password: (the one you set above)"
 
 # Create cleanup script in organized directory
 mkdir -p $HOME/spot-workstations
