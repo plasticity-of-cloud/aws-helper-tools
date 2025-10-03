@@ -65,7 +65,7 @@ fi
 # Map architecture to AMI architecture string
 if [ "$ARCH" = "x86" ]; then
     AMI_ARCH="amd64"
-    DEFAULT_INSTANCE_TYPE="m7i.2xlarge"
+    DEFAULT_INSTANCE_TYPE="m6a.2xlarge"
 else
     AMI_ARCH="arm64"
     DEFAULT_INSTANCE_TYPE="m7g.2xlarge"

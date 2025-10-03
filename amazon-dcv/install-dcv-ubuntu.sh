@@ -38,7 +38,7 @@ if [ -d nice-dcv-* ]; then
     cd nice-dcv-*
     # Install dependencies first
     sudo apt-get update
-    sudo apt-get install -y ubuntu-desktop-minimal xserver-xorg-video-dummy
+    sudo apt-get install -y ubuntu-desktop-minimal xserver-xorg-video-dummy libxcb-damage0 libxcb-xtest0 keyutils
 
     # Install DCV packages directly (skip GPG verification for now)
     echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] Installing DCV server package..."
