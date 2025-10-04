@@ -6,6 +6,9 @@
 
 set -euo pipefail
 
+# Architecture variable (will be set by detect_architecture function)
+ARCH=""
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -38,7 +41,7 @@ check_root() {
     fi
 }
 
-# Check Ubuntu version
+# Check Ubuntu version and architecture
 check_ubuntu() {
     if ! grep -q "Ubuntu" /etc/os-release; then
         log_error "This script is designed for Ubuntu systems only."
@@ -51,6 +54,24 @@ check_ubuntu() {
     if [[ ! "$ubuntu_version" =~ ^(18\.04|20\.04|22\.04|24\.04) ]]; then
         log_warning "This script has been tested on Ubuntu 18.04, 20.04, 22.04, and 24.04. Your version ($ubuntu_version) may not be fully supported."
     fi
+}
+
+# Detect system architecture
+detect_architecture() {
+    local arch=$(uname -m)
+    case $arch in
+        x86_64)
+            ARCH="amd64"
+            ;;
+        aarch64|arm64)
+            ARCH="arm64"
+            ;;
+        *)
+            log_error "Unsupported architecture: $arch. Only amd64 and arm64 are supported."
+            exit 1
+            ;;
+    esac
+    log_info "Detected architecture: $ARCH"
 }
 
 # Install prerequisites
@@ -93,8 +114,8 @@ install_go() {
     fi
     
     # Get latest Go version
-    local latest_go=$(curl -s https://go.dev/VERSION?m=text)
-    local go_url="https://go.dev/dl/${latest_go}.linux-amd64.tar.gz"
+    local latest_go=$(curl -s https://go.dev/VERSION?m=text|head -n1)
+    local go_url="https://go.dev/dl/${latest_go}.linux-${ARCH}.tar.gz"
     
     log_info "Downloading Go ${latest_go}..."
     wget -q "$go_url" -O /tmp/go.tar.gz
@@ -163,7 +184,7 @@ install_kubectl() {
     log_info "Installing kubectl..."
     
     # Download kubectl
-    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${ARCH}/kubectl"
     
     # Install kubectl
     sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
@@ -181,7 +202,7 @@ install_kubebuilder() {
     log_info "Latest Kubebuilder version: $latest_version"
     
     # Download and install
-    local download_url="https://github.com/kubernetes-sigs/kubebuilder/releases/download/${latest_version}/kubebuilder_linux_amd64"
+    local download_url="https://github.com/kubernetes-sigs/kubebuilder/releases/download/${latest_version}/kubebuilder_linux_${ARCH}"
     
     curl -L "$download_url" -o /tmp/kubebuilder
     chmod +x /tmp/kubebuilder
@@ -199,7 +220,7 @@ install_operator_sdk() {
     log_info "Latest Operator SDK version: $latest_version"
     
     # Download and install
-    local download_url="https://github.com/operator-framework/operator-sdk/releases/download/${latest_version}/operator-sdk_linux_amd64"
+    local download_url="https://github.com/operator-framework/operator-sdk/releases/download/${latest_version}/operator-sdk_linux_${ARCH}"
     
     curl -L "$download_url" -o /tmp/operator-sdk
     chmod +x /tmp/operator-sdk
@@ -231,7 +252,7 @@ install_additional_tools() {
     if ! command -v kind &> /dev/null; then
         log_info "Installing kind..."
         local kind_version=$(curl -s https://api.github.com/repos/kubernetes-sigs/kind/releases/latest | jq -r '.tag_name')
-        curl -Lo /tmp/kind "https://kind.sigs.k8s.io/dl/${kind_version}/kind-linux-amd64"
+        curl -Lo /tmp/kind "https://kind.sigs.k8s.io/dl/${kind_version}/kind-linux-${ARCH}"
         chmod +x /tmp/kind
         sudo mv /tmp/kind /usr/local/bin/
         log_success "kind installed"
@@ -326,6 +347,7 @@ main() {
     
     check_root
     check_ubuntu
+    detect_architecture
     
     # Install components
     install_prerequisites
