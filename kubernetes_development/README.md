@@ -19,7 +19,7 @@ Automated installation script that sets up a complete Kubernetes operator develo
 
 | Tool | Latest Version | Purpose |
 |------|----------------|---------|
-| **Kubebuilder** | v4.7.1 | Framework for building Kubernetes APIs using CRDs |
+| **Kubebuilder** | v4.9.0 | Framework for building Kubernetes APIs using CRDs |
 | **Operator SDK** | v1.41.1 | SDK for building Kubernetes operators |
 | **Go** | Latest | Required runtime for operator development |
 | **Docker** | Latest | Container runtime for building and testing |
@@ -38,7 +38,7 @@ Automated installation script that sets up a complete Kubernetes operator develo
 ### System Requirements
 
 - **Operating System**: Ubuntu 18.04, 20.04, 22.04, or 24.04
-- **Architecture**: x86_64 (amd64)
+- **Architecture**: x86_64 (amd64) or ARM64 (aarch64)
 - **User**: Non-root user with sudo privileges
 - **Internet**: Required for downloading packages
 
@@ -47,7 +47,7 @@ Automated installation script that sets up a complete Kubernetes operator develo
 1. **System Validation**
    - Checks Ubuntu version compatibility
    - Ensures non-root execution
-   - Validates system architecture
+   - Validates system architecture (amd64/arm64)
 
 2. **Prerequisites Installation**
    - Updates package repositories
