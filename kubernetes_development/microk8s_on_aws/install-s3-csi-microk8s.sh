@@ -76,48 +76,36 @@ cat > /tmp/s3_csi_policy.json << 'EOF'
 }
 EOF
 
-# Check if role already exists with S3 permissions
+# Get current instance role
+echo -e "${YELLOW}Getting current instance IAM role...${NC}"
 CURRENT_ASSOCIATION=$(aws ec2 describe-iam-instance-profile-associations --filters Name=instance-id,Values=$INSTANCE_ID --region $AWS_REGION --query 'IamInstanceProfileAssociations[0].IamInstanceProfile.Arn' --output text 2>/dev/null || echo "None")
 
-if [ "$CURRENT_ASSOCIATION" != "None" ] && [ "$CURRENT_ASSOCIATION" != "" ]; then
-    # Extract role name from existing instance profile
-    EXISTING_PROFILE=$(basename $CURRENT_ASSOCIATION)
-    EXISTING_ROLE=$(aws iam get-instance-profile --instance-profile-name $EXISTING_PROFILE --query 'InstanceProfile.Roles[0].RoleName' --output text 2>/dev/null || echo "None")
-    
-    if [ "$EXISTING_ROLE" != "None" ]; then
-        echo -e "${YELLOW}Adding S3 CSI driver policy to existing role: ${EXISTING_ROLE}${NC}"
-        aws iam put-role-policy --role-name $EXISTING_ROLE --policy-name AmazonS3CSIDriverPolicy --policy-document file:///tmp/s3_csi_policy.json
-        ROLE_NAME=$EXISTING_ROLE
-        PROFILE_NAME=$EXISTING_PROFILE
-        SKIP_PROFILE_CREATION=true
-    fi
+if [ "$CURRENT_ASSOCIATION" == "None" ] || [ "$CURRENT_ASSOCIATION" == "" ]; then
+    echo -e "${RED}Error: No IAM instance profile found. Please attach an IAM role to this instance first.${NC}"
+    exit 1
 fi
 
-if [ "$SKIP_PROFILE_CREATION" != "true" ]; then
-    # Create IAM role for S3 CSI
-    echo -e "${YELLOW}Creating IAM role for S3 CSI...${NC}"
-    ROLE_NAME="S3-CSI-MicroK8s-Role-$(date +%s)"
-    PROFILE_NAME="S3-CSI-MicroK8s-Profile-$(date +%s)"
+# Extract role name from existing instance profile
+EXISTING_PROFILE=$(basename $CURRENT_ASSOCIATION)
+EXISTING_ROLE=$(aws iam get-instance-profile --instance-profile-name $EXISTING_PROFILE --query 'InstanceProfile.Roles[0].RoleName' --output text 2>/dev/null || echo "None")
 
-    aws iam create-role --role-name $ROLE_NAME --assume-role-policy-document '{
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Effect": "Allow",
-          "Principal": {
-            "Service": "ec2.amazonaws.com"
-          },
-          "Action": "sts:AssumeRole"
-        }
-      ]
-    }' > /dev/null
+if [ "$EXISTING_ROLE" == "None" ]; then
+    echo -e "${RED}Error: No IAM role found in instance profile. Please ensure the instance has a valid IAM role.${NC}"
+    exit 1
+fi
 
-    # Attach S3 CSI policy to role
-    echo -e "${YELLOW}Attaching S3 CSI policy to role...${NC}"
-    aws iam put-role-policy --role-name $ROLE_NAME --policy-name AmazonS3CSIDriverPolicy --policy-document file:///tmp/s3_csi_policy.json
+echo -e "${GREEN}Found existing IAM role: ${EXISTING_ROLE}${NC}"
 
-    # Create instance profile
-    echo -e "${YELLOW}Creating instance profile...${NC}"
+# Attach S3 CSI policy to existing role
+echo -e "${YELLOW}Attaching S3 CSI policy to existing role...${NC}"
+aws iam put-role-policy --role-name $EXISTING_ROLE --policy-name AmazonS3CSIDriverPolicy --policy-document file:///tmp/s3_csi_policy.json
+
+ROLE_NAME=$EXISTING_ROLE
+PROFILE_NAME=$EXISTING_PROFILE
+
+# Wait for IAM propagation
+echo -e "${YELLOW}Waiting for IAM policy propagation...${NC}"
+sleep 10
     aws iam create-instance-profile --instance-profile-name $PROFILE_NAME > /dev/null
     aws iam add-role-to-instance-profile --instance-profile-name $PROFILE_NAME --role-name $ROLE_NAME
 

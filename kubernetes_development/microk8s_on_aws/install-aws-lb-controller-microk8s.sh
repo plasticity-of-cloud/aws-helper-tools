@@ -57,47 +57,36 @@ microk8s status --wait-ready
 echo -e "${YELLOW}Downloading AWS Load Balancer Controller IAM policy...${NC}"
 curl -s -o /tmp/alb_policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.7.2/docs/install/iam_policy.json
 
-# Create IAM role for AWS Load Balancer Controller
-echo -e "${YELLOW}Creating IAM role for AWS Load Balancer Controller...${NC}"
-ROLE_NAME="AWS-LB-Controller-MicroK8s-Role-$(date +%s)"
-PROFILE_NAME="AWS-LB-Controller-MicroK8s-Profile-$(date +%s)"
-
-# Check if role already exists with LB permissions
+# Get current instance role
+echo -e "${YELLOW}Getting current instance IAM role...${NC}"
 CURRENT_ASSOCIATION=$(aws ec2 describe-iam-instance-profile-associations --filters Name=instance-id,Values=$INSTANCE_ID --region $AWS_REGION --query 'IamInstanceProfileAssociations[0].IamInstanceProfile.Arn' --output text 2>/dev/null || echo "None")
 
-if [ "$CURRENT_ASSOCIATION" != "None" ] && [ "$CURRENT_ASSOCIATION" != "" ]; then
-    # Extract role name from existing instance profile
-    EXISTING_PROFILE=$(basename $CURRENT_ASSOCIATION)
-    EXISTING_ROLE=$(aws iam get-instance-profile --instance-profile-name $EXISTING_PROFILE --query 'InstanceProfile.Roles[0].RoleName' --output text 2>/dev/null || echo "None")
-    
-    if [ "$EXISTING_ROLE" != "None" ]; then
-        echo -e "${YELLOW}Adding Load Balancer Controller policy to existing role: ${EXISTING_ROLE}${NC}"
-        aws iam put-role-policy --role-name $EXISTING_ROLE --policy-name AWSLoadBalancerControllerIAMPolicy --policy-document file:///tmp/alb_policy.json
-        ROLE_NAME=$EXISTING_ROLE
-        PROFILE_NAME=$EXISTING_PROFILE
-        SKIP_PROFILE_CREATION=true
-    fi
+if [ "$CURRENT_ASSOCIATION" == "None" ] || [ "$CURRENT_ASSOCIATION" == "" ]; then
+    echo -e "${RED}Error: No IAM instance profile found. Please attach an IAM role to this instance first.${NC}"
+    exit 1
 fi
 
-if [ "$SKIP_PROFILE_CREATION" != "true" ]; then
-    aws iam create-role --role-name $ROLE_NAME --assume-role-policy-document '{
-      "Version": "2012-10-17",
-      "Statement": [
-        {
-          "Effect": "Allow",
-          "Principal": {
-            "Service": "ec2.amazonaws.com"
-          },
-          "Action": "sts:AssumeRole"
-        }
-      ]
-    }' > /dev/null
+# Extract role name from existing instance profile
+EXISTING_PROFILE=$(basename $CURRENT_ASSOCIATION)
+EXISTING_ROLE=$(aws iam get-instance-profile --instance-profile-name $EXISTING_PROFILE --query 'InstanceProfile.Roles[0].RoleName' --output text 2>/dev/null || echo "None")
 
-    # Attach Load Balancer Controller policy to role
-    echo -e "${YELLOW}Attaching Load Balancer Controller policy to role...${NC}"
-    aws iam put-role-policy --role-name $ROLE_NAME --policy-name AWSLoadBalancerControllerIAMPolicy --policy-document file:///tmp/alb_policy.json
+if [ "$EXISTING_ROLE" == "None" ]; then
+    echo -e "${RED}Error: No IAM role found in instance profile. Please ensure the instance has a valid IAM role.${NC}"
+    exit 1
+fi
 
-    # Create instance profile
+echo -e "${GREEN}Found existing IAM role: ${EXISTING_ROLE}${NC}"
+
+# Attach Load Balancer Controller policy to existing role
+echo -e "${YELLOW}Attaching Load Balancer Controller policy to existing role...${NC}"
+aws iam put-role-policy --role-name $EXISTING_ROLE --policy-name AWSLoadBalancerControllerIAMPolicy --policy-document file:///tmp/alb_policy.json
+
+ROLE_NAME=$EXISTING_ROLE
+PROFILE_NAME=$EXISTING_PROFILE
+
+# Wait for IAM propagation
+echo -e "${YELLOW}Waiting for IAM policy propagation...${NC}"
+sleep 10
     echo -e "${YELLOW}Creating instance profile...${NC}"
     aws iam create-instance-profile --instance-profile-name $PROFILE_NAME > /dev/null
     aws iam add-role-to-instance-profile --instance-profile-name $PROFILE_NAME --role-name $ROLE_NAME

@@ -55,52 +55,36 @@ microk8s status --wait-ready
 echo -e "${YELLOW}Downloading EBS CSI driver IAM policy...${NC}"
 curl -s -o /tmp/ebs_csi_policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-ebs-csi-driver/master/docs/example-iam-policy.json
 
-# Create IAM role for EBS CSI
-echo -e "${YELLOW}Creating IAM role for EBS CSI...${NC}"
-ROLE_NAME="EBS-CSI-MicroK8s-Role-$(date +%s)"
-PROFILE_NAME="EBS-CSI-MicroK8s-Profile-$(date +%s)"
+# Get current instance role
+echo -e "${YELLOW}Getting current instance IAM role...${NC}"
+CURRENT_ASSOCIATION=$(aws ec2 describe-iam-instance-profile-associations --filters Name=instance-id,Values=$INSTANCE_ID --region $AWS_REGION --query 'IamInstanceProfileAssociations[0].IamInstanceProfile.Arn' --output text 2>/dev/null || echo "None")
 
-aws iam create-role --role-name $ROLE_NAME --assume-role-policy-document '{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "ec2.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}' > /dev/null
-
-# Attach EBS CSI policy to role
-echo -e "${YELLOW}Attaching EBS CSI policy to role...${NC}"
-aws iam put-role-policy --role-name $ROLE_NAME --policy-name AmazonEBSCSIDriverPolicy --policy-document file:///tmp/ebs_csi_policy.json
-
-# Create instance profile
-echo -e "${YELLOW}Creating instance profile...${NC}"
-aws iam create-instance-profile --instance-profile-name $PROFILE_NAME > /dev/null
-aws iam add-role-to-instance-profile --instance-profile-name $PROFILE_NAME --role-name $ROLE_NAME
-
-# Wait for IAM propagation
-echo -e "${YELLOW}Waiting for IAM propagation...${NC}"
-sleep 10
-
-# Get current instance profile association
-echo -e "${YELLOW}Replacing instance profile...${NC}"
-CURRENT_ASSOCIATION=$(aws ec2 describe-iam-instance-profile-associations --filters Name=instance-id,Values=$INSTANCE_ID --region $AWS_REGION --query 'IamInstanceProfileAssociations[0].AssociationId' --output text)
-
-if [ "$CURRENT_ASSOCIATION" != "None" ] && [ "$CURRENT_ASSOCIATION" != "" ]; then
-    # Replace existing association
-    aws ec2 replace-iam-instance-profile-association --iam-instance-profile Name=$PROFILE_NAME --association-id $CURRENT_ASSOCIATION --region $AWS_REGION > /dev/null
-else
-    # Associate new profile
-    aws ec2 associate-iam-instance-profile --instance-id $INSTANCE_ID --iam-instance-profile Name=$PROFILE_NAME --region $AWS_REGION > /dev/null
+if [ "$CURRENT_ASSOCIATION" == "None" ] || [ "$CURRENT_ASSOCIATION" == "" ]; then
+    echo -e "${RED}Error: No IAM instance profile found. Please attach an IAM role to this instance first.${NC}"
+    exit 1
 fi
 
-# Wait for association
-echo -e "${YELLOW}Waiting for IAM association...${NC}"
-sleep 15
+# Extract role name from existing instance profile
+EXISTING_PROFILE=$(basename $CURRENT_ASSOCIATION)
+EXISTING_ROLE=$(aws iam get-instance-profile --instance-profile-name $EXISTING_PROFILE --query 'InstanceProfile.Roles[0].RoleName' --output text 2>/dev/null || echo "None")
+
+if [ "$EXISTING_ROLE" == "None" ]; then
+    echo -e "${RED}Error: No IAM role found in instance profile. Please ensure the instance has a valid IAM role.${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}Found existing IAM role: ${EXISTING_ROLE}${NC}"
+
+# Attach EBS CSI policy to existing role
+echo -e "${YELLOW}Attaching EBS CSI policy to existing role...${NC}"
+aws iam put-role-policy --role-name $EXISTING_ROLE --policy-name AmazonEBSCSIDriverPolicy --policy-document file:///tmp/ebs_csi_policy.json
+
+ROLE_NAME=$EXISTING_ROLE
+PROFILE_NAME=$EXISTING_PROFILE
+
+# Wait for IAM propagation
+echo -e "${YELLOW}Waiting for IAM policy propagation...${NC}"
+sleep 10
 
 # Add AWS EBS CSI Helm repository
 echo -e "${YELLOW}Adding AWS EBS CSI Helm repository...${NC}"
